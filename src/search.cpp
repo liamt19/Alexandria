@@ -499,6 +499,50 @@ int Negamax(int alpha, int beta, int depth, const bool cutNode, ThreadData* td, 
             if (razorScore <= alpha)
                 return razorScore;
         }
+
+
+        const int init_beta = 256;
+        const int init_depth = 4;
+
+        const int pcNotImproving = 193;
+        const int pcImproving = 369;
+        int pcBeta = beta + (improving ? pcImproving : pcNotImproving);
+        if (   depth > 4
+               && abs(beta) < MATE_FOUND
+               && (   ttScore == SCORE_NONE
+                      || tte.depth < depth - 3
+                      || ttScore >= pcBeta))
+        {
+            Movepicker mp;
+            int move;
+            InitMP(&mp, pos, sd, ss, NOMOVE, PROBCUT);
+            while ((move = NextMove(&mp, true)) != NOMOVE) {
+
+                if (!IsLegal(pos, move))
+                    continue;
+
+                // Speculative prefetch of the TT entry
+                TTPrefetch(keyAfter(pos, move));
+                ss->move = move;
+
+                info->nodes++;
+
+                // Play the move
+                MakeMove(move, pos);
+
+                score = -Quiescence<false>(-pcBeta, -pcBeta + 1, td, ss + 1);
+                if (score >= pcBeta)
+                    score = -Negamax<false>(-pcBeta, -pcBeta + 1, depth - 3 - 1, !cutNode, td, ss + 1);
+
+                // Take move back
+                UnmakeMove(move, pos);
+
+                if (score >= pcBeta) {
+                    return score;
+                }
+
+            }
+        }
     }
 
 moves_loop:
